@@ -145,17 +145,12 @@
     h1 { font-size: 18px; }
     .header-right { width: 100%; justify-content: flex-start; gap: 10px; flex-wrap: wrap; }
     main { padding: 14px 16px; }
-    .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; }
+    .summary { grid-template-columns: 1fr; gap: 12px; padding: 12px; }
     .summary .title { font-size: 14px; white-space: normal; }
     .summary .item { padding: 10px; }
+    .index-grid { grid-template-columns: 1fr; }
     .temp-item .temp-num { font-size: 24px; }
   }
-  @media (max-width: 640px) {
-    .summary { grid-template-columns: 1fr; }
-  }
-  @media (max-width: 980px) { .index-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  @media (max-width: 640px) { .index-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 480px) { .index-grid { grid-template-columns: 1fr; } }
 
   /* 设置抽屉 */
   .drawer-mask { position: fixed; inset: 0; background: rgba(15,23,42,.25); display: none; z-index: 20; }
