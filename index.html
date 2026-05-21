@@ -50,22 +50,6 @@
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px;" id="margin-sub">东方财富融资融券汇总</div>
     </div>
-  </div>
-
-  <div class="summary" id="summary2" style="grid-template-columns: repeat(6, 1fr);">
-    <div class="item temp-item">
-      <div class="label">
-        A股温度 <span id="temp-basis" style="color:var(--muted);font-weight:400;">近10年</span>
-        <button id="temp-refresh" title="手动刷新温度"
-          style="margin-left:6px;cursor:pointer;border:1px solid var(--border);background:#fff;
-                 color:var(--muted);border-radius:6px;padding:1px 7px;font-size:11px;">↻</button>
-      </div>
-      <div class="temp-value">
-        <span class="temp-num" id="temp-num">--</span>
-        <span class="temp-tag" id="temp-tag">--</span>
-      </div>
-      <div class="temp-sub" id="temp-sub">全A PB中位数历史百分位</div>
-    </div>
     <div class="item temp-item">
       <div class="label">集思录A股温度</div>
       <div class="temp-value">
@@ -84,11 +68,6 @@
       <div style="margin-top:6px;">
         <a href="#" id="bond-help" style="font-size:12px;color:var(--accent);text-decoration:none;cursor:pointer;">查看参考解释 →</a>
       </div>
-    </div>
-    <div class="item" id="interface-health-item">
-      <div class="label">接口健康 <span style="color:var(--muted);font-weight:400;font-size:11px;" id="interface-health-time">--</span></div>
-      <div id="interface-health-status" style="font-size:22px;font-weight:700;margin-top:6px;">--</div>
-      <div class="temp-sub" id="interface-health-sub">等待首轮数据检查</div>
     </div>
   </div>
 
@@ -125,7 +104,6 @@
   数据来源：东方财富 push2 · 腾讯 qt 兜底 · 仅供参考，不作为投资建议
 </footer>
 
-<script src="pb_history.js"></script>
 <script src="jsl_temperature.js" onerror="window.__JSL_MISSING=true"></script>
 <script src="assets/remote-data-config.js"></script>
 <script src="assets/jsl-remote-loader.js"></script>

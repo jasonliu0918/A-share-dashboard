@@ -36,7 +36,7 @@ for (const ref of [...cssRefs, ...scriptRefs]) {
 }
 pass(`HTML references ${cssRefs.length} CSS file(s) and ${scriptRefs.length} JS file(s)`);
 
-const dashboardScripts = scriptRefs.filter((ref) => !["pb_history.js", "jsl_temperature.js"].includes(ref));
+const dashboardScripts = scriptRefs.filter((ref) => ref !== "jsl_temperature.js");
 const dashboardSources = [];
 for (const ref of dashboardScripts) {
   const source = await readProjectFile(ref);
@@ -58,7 +58,6 @@ vm.runInContext(
   dataContext,
   { filename: "assets/trading-calendar.js" },
 );
-vm.runInContext(await readProjectFile("pb_history.js"), dataContext, { filename: "pb_history.js" });
 vm.runInContext(await readProjectFile("jsl_temperature.js"), dataContext, { filename: "jsl_temperature.js" });
 
 const calendar = dataContext.window.A_SHARE_TRADING_CALENDAR;
@@ -66,15 +65,6 @@ if (!calendar || !calendar.closedDates || !calendar.closedDates.has("2026-05-01"
   fail("A_SHARE_TRADING_CALENDAR has unexpected structure");
 }
 pass(`A_SHARE_TRADING_CALENDAR structure (${calendar.closedDates.size} closed dates)`);
-
-const pb = dataContext.window.PB_HISTORY;
-if (!pb || !Array.isArray(pb.sorted10y) || !Array.isArray(pb.sortedAll) || !pb.meta) {
-  fail("PB_HISTORY has unexpected structure");
-}
-if (pb.sorted10y.length === 0 || pb.sortedAll.length === 0) {
-  fail("PB_HISTORY arrays are empty");
-}
-pass(`PB_HISTORY structure (${pb.sorted10y.length} recent points, ${pb.sortedAll.length} total points)`);
 
 const jsl = dataContext.window.JSL_TEMPERATURE;
 if (!jsl || typeof jsl.temperature !== "number") {
@@ -114,7 +104,7 @@ function compilePython(script) {
   return attempts[attempts.length - 1];
 }
 
-for (const script of ["gen_pb_history.py", "gen_jsl_temperature.py"]) {
+for (const script of ["gen_jsl_temperature.py"]) {
   const { candidate, result } = compilePython(script);
   if (result.status !== 0) {
     const detail = result.error ? result.error.message : (result.stderr || result.stdout || "unknown error");
@@ -163,11 +153,11 @@ async function runLiveInterfaceContracts() {
   requirePath(quote, "data.f86", "eastmoney quote");
 
   const clist = await fetchJsonp(
-    "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=1&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m%3A1%2Bt%3A2&fields=f3,f20,f23&ut=bd1d9ddb04089700cf9c27f6f7426281",
+    "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=1&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m%3A1%2Bt%3A2&fields=f3,f20&ut=bd1d9ddb04089700cf9c27f6f7426281",
   );
   const first = clist && clist.data && clist.data.diff && clist.data.diff[0];
-  if (!first || first.f3 == null || first.f20 == null || first.f23 == null) {
-    fail("Live contract failed: eastmoney clist fields f3/f20/f23");
+  if (!first || first.f3 == null || first.f20 == null) {
+    fail("Live contract failed: eastmoney clist fields f3/f20");
   }
 
   const kline = await fetchJsonp(

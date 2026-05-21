@@ -140,9 +140,6 @@
   .tag-hot  { background: #fee2e2; color: #b91c1c; }
   .group-title { margin: 8px 0 12px; font-size: 13px; color: var(--muted); font-weight: 500;
     padding-left: 4px; border-left: 3px solid var(--accent); padding-left: 10px; }
-  @media (max-width: 1400px) {
-    .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  }
   @media (max-width: 900px) {
     header { padding: 14px 16px; flex-wrap: wrap; align-items: flex-start; }
     h1 { font-size: 18px; }

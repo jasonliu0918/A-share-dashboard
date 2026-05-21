@@ -25,7 +25,6 @@ const INTERFACE_CONTRACTS = {
   qqQuote: { label: "腾讯行情", required: ["~3 最新价", "~30 时间", "~37 成交额"] },
   breadth: { label: "东财涨跌家数", required: ["data.diff[].f3", "data.diff[].f20"] },
   limitPool: { label: "涨跌停股池", required: ["data.total 或 data.pool"] },
-  allPb: { label: "全A PB", required: ["data.diff[].f23"] },
   trends: { label: "分时走势", required: ["data.trends[]", "data.preClose"] },
   kline: { label: "日线K线", required: ["data.klines[][6] 成交额"] },
   margin: { label: "融资余额", required: ["FIN_BALANCE", "LOAN_BALANCE"] },
@@ -279,59 +278,6 @@ async function getBreadth(code) {
     recordInterfaceHealth("breadth", false, e.message || e);
     return c ? c.data : null;
   }
-}
-
-// ===== A股温度（全A PB 中位数 → 历史分位） =====
-// 拉全A（沪A+深A+北交所）的 PB（f23），取中位数，在 pb_history.js 的近10年分布里求分位
-const TEMP_FS = "m:1+t:2,m:1+t:23,m:0+t:6,m:0+t:80,m:0+t:81+s:2048";
-async function fetchAllPbMedian() {
-  const PAGE = 100;
-  const pbs = [];
-  let pn = 1, total = 0;
-  while (pn <= 80) { // 全A 约 5400 只
-    const qs =
-      `pn=${pn}&pz=${PAGE}&po=1&np=1&fltt=2&invt=2&fid=f3&fs=${encodeURIComponent(TEMP_FS)}` +
-      `&fields=f23&ut=bd1d9ddb04089700cf9c27f6f7426281`;
-    let j = null, lastErr = null;
-    for (const host of EM_HOSTS) {
-      try { j = await jsonp(`https://${host}/api/qt/clist/get?${qs}`, 8000); break; }
-      catch (e) { lastErr = e; }
-    }
-    if (!j || !j.data) {
-      recordInterfaceHealth("allPb", false, lastErr ? lastErr.message : "clist empty");
-      throw lastErr || new Error("clist empty");
-    }
-    const rows = Array.isArray(j.data.diff) ? j.data.diff : [];
-    if (rows.length === 0) break;
-    for (const r of rows) {
-      const pb = Number(r.f23);
-      // 过滤负 PB（净资产为负）和 0/缺失，这与乐咕乐股口径一致
-      if (Number.isFinite(pb) && pb > 0) pbs.push(pb);
-    }
-    total = Number(j.data.total) || total;
-    if (pn * PAGE >= total) break;
-    pn++;
-  }
-  if (pbs.length === 0) {
-    recordInterfaceHealth("allPb", false, "no pb");
-    throw new Error("no pb");
-  }
-  pbs.sort((a, b) => a - b);
-  const n = pbs.length;
-  const median = n % 2 ? pbs[(n - 1) / 2] : (pbs[n/2 - 1] + pbs[n/2]) / 2;
-  recordInterfaceHealth("allPb", true, `samples:${n}`);
-  return { median, sampleSize: n };
-}
-
-// 在已排序数组里用二分求"严格小于 v 的个数" → 百分位
-function percentileRank(sortedAsc, v) {
-  let lo = 0, hi = sortedAsc.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (sortedAsc[mid] < v) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo / sortedAsc.length * 100;
 }
 
 function classifyTemp(t) {

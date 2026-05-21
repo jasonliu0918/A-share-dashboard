@@ -2,7 +2,7 @@
 
 > 项目代号：**A股指数实时看板**（位置：`D:\work-AI\codex\成交量实时数据网页\`）
 
-显示 **上证指数 / 深证成指 / 北证50** 的价格、涨跌、成交额、成交量、涨跌家数，以及三大指数汇总、A股温度（自算 + 集思录）。
+显示 **上证指数 / 深证成指 / 北证50** 的价格、涨跌、成交额、成交量、涨跌家数，以及三大指数汇总和集思录 A股温度。
 
 ## 用法
 
@@ -25,16 +25,14 @@
 | `index.html` | 主页面骨架，引用拆分后的样式和脚本 |
 | `assets/styles.css` | 页面样式 |
 | `assets/trading-calendar.js` | A股交易日历，当前内置 2026 年交易所休市安排 |
-| `assets/data-interfaces.js` | 行情、广度、温度、分时、K 线等数据接口 |
+| `assets/data-interfaces.js` | 行情、广度、分时、K 线等数据接口 |
 | `assets/status-logic.js` | 本地配置、选中指数、市场状态判定 |
 | `assets/render.js` | 卡片、汇总、温度、分时图等渲染函数 |
 | `assets/app.js` | 启动、定时刷新、设置面板和接口/渲染编排 |
-| `pb_history.js` | 全 A PB 中位数历史分布（自算温度用），由 `gen_pb_history.py` 生成 |
 | `jsl_temperature.js` | 集思录 A股温度快照，可由 GitHub Actions 自动生成 |
 | `.github/workflows/update-jsl-temperature.yml` | 云端自动刷新集思录温度并提交数据文件 |
 | `assets/remote-data-config.js` | 可选远程数据地址，本地打开也能加载云端最新版 |
 | `assets/jsl-remote-loader.js` | 加载远程 `jsl_temperature.js`，并优先使用更新的数据 |
-| `gen_pb_history.py` | 重建 PB 历史文件（建议每周/每天跑一次）|
 | `gen_jsl_temperature.py` | 刷新集思录温度（由 schtasks 定时跑）|
 | `tools/validate.mjs` | 本地轻量验证：HTML 引用、JS 语法、数据结构、Python 编译 |
 | `项目总结.md` | 完整项目文档 |
@@ -59,7 +57,6 @@ window.JSL_TEMPERATURE_REMOTE_URL = "https://你的用户名.github.io/你的仓
 **Windows 上必须用 `py`，不能用 `python`**（Store 自带的 `python` 是占位 shim，exit 49 不输出）：
 
 ```
-py gen_pb_history.py
 py gen_jsl_temperature.py
 ```
 
@@ -73,7 +70,7 @@ py gen_jsl_temperature.py
 node tools/validate.mjs
 ```
 
-验证内容包括：HTML 引用的本地资源是否存在、看板 JS 是否可解析、`pb_history.js` / `jsl_temperature.js` 结构是否正常、两个 Python 脚本是否可编译。
+验证内容包括：HTML 引用的本地资源是否存在、看板 JS 是否可解析、`jsl_temperature.js` 结构是否正常、Python 脚本是否可编译。
 
 需要巡检外部接口字段是否仍符合预期时，使用联网检查：
 
@@ -81,7 +78,7 @@ node tools/validate.mjs
 node tools/validate.mjs --live
 ```
 
-页面运行时也会在“接口健康”卡片里显示最近一轮接口契约状态；某个 JSONP、字段编号或参数变更时，会显示异常项，便于快速定位。
+页面运行时仍会在内部记录接口契约状态，便于调试字段变更；接口健康卡片默认不显示。
 
 ## 交易日历
 
@@ -89,7 +86,6 @@ node tools/validate.mjs --live
 
 ## 数据来源
 
-- **东方财富 push2 / clist / trends2**（JSONP，无需 key）：指数行情、个股涨跌幅、个股 PB、分时走势
+- **东方财富 push2 / clist / trends2**（JSONP，无需 key）：指数行情、个股涨跌幅、分时走势
 - **腾讯 qt.gtimg.cn**（JSONP，兜底）：指数行情备用
 - **集思录 get_last_indicator**（Python POST，公开接口无需 cookie）：官方口径 A股温度
-- **AKShare stock_a_all_pb**（Python）：历史 PB 中位数序列
