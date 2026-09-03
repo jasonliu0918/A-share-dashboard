@@ -329,11 +329,13 @@ async function fetchTrends(target) {
 }
 
 // ===== 合计成交额近3日（沪+深+北证50 日线 K 求和） =====
+// K线属历史数据，push2his 是东财历史服务器，优先尝试它，其余主机兜底
+const KLINE_HOSTS = ["push2his.eastmoney.com", ...EM_HOSTS.filter(h => h !== "push2his.eastmoney.com")];
 async function fetchKline3d(secid) {
-  const qs = `secid=${encodeURIComponent(secid)}&klt=101&fqt=0&end=20500000&lmt=1` +
+  const qs = `secid=${encodeURIComponent(secid)}&klt=101&fqt=0&end=20500000&lmt=3` +
     `&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60` +
     `&ut=fa5fd1943c7b386f172d6893dbfba10b`;
-  for (const host of EM_HOSTS) {
+  for (const host of KLINE_HOSTS) {
     try {
       const j = await jsonp(`https://${host}/api/qt/stock/kline/get?${qs}`, 7000);
       const lines = j && j.data && Array.isArray(j.data.klines) ? j.data.klines : null;

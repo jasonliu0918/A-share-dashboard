@@ -306,7 +306,10 @@ async function fetchAndRenderAmt3d() {
   if (!container) return;
   const SECIDS = ["1.000001", "0.399001", "0.899050"];
   try {
-    const all = await Promise.all(SECIDS.map(fetchKline3d));
+    // 用 allSettled：只要沪/深任一成功即可合并出近3日，北证50 失败不拖垮整卡
+    const settled = await Promise.allSettled(SECIDS.map(fetchKline3d));
+    const all = settled.filter(s => s.status === "fulfilled").map(s => s.value);
+    if (all.length === 0) throw new Error("all kline failed");
     // 按日期合并
     const byDate = {};
     all.forEach(arr => arr.forEach(({date, amount}) => {
@@ -315,19 +318,32 @@ async function fetchAndRenderAmt3d() {
     }));
     const rows = Object.entries(byDate)
       .sort((a, b) => a[0] < b[0] ? -1 : 1)
-      .slice(-1)
+      .slice(-3)
       .map(([date, amt]) => ({ date, amtYi: amt / 1e8 }));
     if (rows.length === 0) {
       container.innerHTML = `<span style="color:var(--muted);font-size:13px;">暂无数据</span>`;
       return;
     }
-    const r = rows[0];
-    recordInterfaceHealth("kline", true, r.date);
-    container.innerHTML = `
-      <div style="display:flex;align-items:baseline;gap:8px;justify-content:center;">
-        <span style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;">${r.amtYi.toFixed(0)}</span>
-        <span style="font-size:12px;color:var(--muted);">亿</span>
-      </div>`;
+    recordInterfaceHealth("kline", true, rows[rows.length - 1].date);
+    const maxAmt = Math.max(...rows.map(r => r.amtYi));
+    container.innerHTML = rows.map((r, i) => {
+      const isLast = i === rows.length - 1;
+      const prev = i > 0 ? rows[i - 1].amtYi : null;
+      const diff = prev != null ? r.amtYi - prev : null;
+      const diffSign = diff == null ? "" : diff >= 0 ? "+" : "";
+      const diffColor = diff == null ? "" : diff >= 0 ? "color:var(--up)" : "color:var(--down)";
+      const barPct = maxAmt > 0 ? (r.amtYi / maxAmt * 100).toFixed(1) : 0;
+      const datePart = r.date.slice(5);
+      return `
+        <div style="display:flex;align-items:center;gap:6px;font-size:${isLast ? "14px" : "12px"};${isLast ? "font-weight:600;" : "color:var(--muted);"}">
+          <span style="min-width:36px;">${datePart}</span>
+          <div style="flex:1;background:#eef2f7;border-radius:3px;height:${isLast ? "6px" : "4px"};overflow:hidden;">
+            <div style="width:${barPct}%;height:100%;background:${isLast ? "var(--accent)" : "#94a3b8"};border-radius:3px;"></div>
+          </div>
+          <span style="min-width:56px;text-align:right;">${r.amtYi.toFixed(0)}<span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:2px;">亿</span></span>
+          ${diff != null ? `<span style="min-width:48px;font-size:11px;${diffColor}">${diffSign}${diff.toFixed(0)}</span>` : `<span style="min-width:48px;"></span>`}
+        </div>`;
+    }).join("");
     if (subEl) subEl.textContent = `沪+深+北证50`;
   } catch (e) {
     // K线失败（常见于非交易时段接口异常），用三大指数的实时成交额合计兜底
