@@ -1,0 +1,35 @@
+{
+  "ranAt": "2026-09-04T13:02:31Z",
+  "probe": [
+    {
+      "secid": "1.000001",
+      "host": "push2his.eastmoney.com",
+      "http": 200,
+      "ctype": "application/json; charset=UTF-8",
+      "len": 2132,
+      "body_head": "{\"rc\":0,\"rt\":17,\"svr\":177617935,\"lt\":2,\"full\":0,\"dlmkts\":\"\",\"dsc\":\"0\",\"data\":{\"code\":\"000001\",\"klines\":[\"2026-06-12,1537401519424.699951\",\"2026-06-15,1403586231",
+      "klines": 60,
+      "days": 60
+    },
+    {
+      "secid": "0.399001",
+      "host": "push2his.eastmoney.com",
+      "http": 200,
+      "ctype": "application/json; charset=UTF-8",
+      "len": 2141,
+      "body_head": "{\"rc\":0,\"rt\":17,\"svr\":177617940,\"lt\":2,\"full\":0,\"dlmkts\":\"\",\"dsc\":\"0\",\"data\":{\"code\":\"399001\",\"klines\":[\"2026-06-12,1677548225901.931641\",\"2026-06-15,1627612447",
+      "klines": 60,
+      "days": 60
+    },
+    {
+      "secid": "0.899050",
+      "host": "push2his.eastmoney.com",
+      "http": 200,
+      "ctype": "application/json; charset=UTF-8",
+      "len": 2026,
+      "body_head": "{\"rc\":0,\"rt\":17,\"svr\":177617926,\"lt\":2,\"full\":0,\"dlmkts\":\"\",\"dsc\":\"0\",\"data\":{\"code\":\"899050\",\"klines\":[\"2026-06-12,21349173425.000000\",\"2026-06-15,19726692050.",
+      "klines": 60,
+      "days": 60
+    }
+  ]
+}
