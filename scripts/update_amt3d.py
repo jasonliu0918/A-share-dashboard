@@ -42,6 +42,8 @@ HOSTS = [
 
 KEEP_DAYS = 30      # 前端只用 3 天，多保留便于排查/节假日/回滚
 FETCH_LMT = 60      # 多拉一些交易日做缓冲
+HOST_RETRIES = 3    # 东财对境外/数据中心 IP 偶发限流，单主机重试
+RUN_RETRIES = 3     # 整轮重试（沪或深缺失时）
 
 HEADERS = {
     "User-Agent": (
@@ -49,6 +51,8 @@ HEADERS = {
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
     ),
     "Referer": "https://quote.eastmoney.com/",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9",
 }
 
 OUT_PATH = Path(__file__).resolve().parent.parent / "assets" / "amt3d.js"
@@ -70,43 +74,50 @@ def fetch_index_daily(secid: str):
     last_err = None
     for host in HOSTS:
         url = f"https://{host}/api/qt/stock/kline/get"
-        try:
-            r = requests.get(url, params=params, headers=HEADERS, timeout=15)
-            r.raise_for_status()
-            data = (r.json() or {}).get("data") or {}
-            klines = data.get("klines") or []
-            out = {}
-            for line in klines:
-                parts = line.split(",")
-                if len(parts) < 2:
-                    continue
-                date = parts[0]
-                try:
-                    amt = float(parts[1])
-                except ValueError:
-                    continue
-                if amt > 0:
-                    out[date] = amt
-            if out:
-                print(f"[ok] {secid} via {host}: {len(out)} 天")
-                return out
-            print(f"[warn] {secid} via {host}: 返回空 klines")
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            print(f"[fail] {secid} via {host}: {e}")
-        time.sleep(0.3)
+        for attempt in range(1, HOST_RETRIES + 1):
+            try:
+                r = requests.get(url, params=params, headers=HEADERS, timeout=20)
+                r.raise_for_status()
+                data = (r.json() or {}).get("data") or {}
+                klines = data.get("klines") or []
+                out = {}
+                for line in klines:
+                    parts = line.split(",")
+                    if len(parts) < 2:
+                        continue
+                    date = parts[0]
+                    try:
+                        amt = float(parts[1])
+                    except ValueError:
+                        continue
+                    if amt > 0:
+                        out[date] = amt
+                if out:
+                    print(f"[ok] {secid} via {host} (try {attempt}): {len(out)} 天")
+                    return out
+                print(f"[warn] {secid} via {host} (try {attempt}): 返回空 klines")
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                print(f"[fail] {secid} via {host} (try {attempt}): {e}")
+            time.sleep(1.5 * attempt)  # 退避
     print(f"[error] {secid}: 所有主机都失败 (last={last_err})")
     return {}
 
 
 def main() -> int:
-    sh = fetch_index_daily(INDICES["sh"])
-    sz = fetch_index_daily(INDICES["sz"])
-    bj = fetch_index_daily(INDICES["bj"])
+    sh = sz = bj = {}
+    for run in range(1, RUN_RETRIES + 1):
+        sh = fetch_index_daily(INDICES["sh"])
+        sz = fetch_index_daily(INDICES["sz"])
+        bj = fetch_index_daily(INDICES["bj"])
+        if sh and sz:
+            break
+        print(f"[retry] 第 {run} 轮沪或深缺失，{6*run}s 后重试整轮…")
+        time.sleep(6 * run)
 
     # 主要市场(沪、深)必须成功，否则视为整体失败，非零退出、不写脏数据
     if not sh or not sz:
-        print("[error] 上证或深证成交额缺失，判定为拉取失败。")
+        print("[error] 上证或深证成交额缺失（多轮重试后仍失败）。保留仓库既有 amt3d.js 不动。")
         return 1
 
     # 以沪、深都存在的日期为准；北证50 缺失则按 0 计入(占比极小)
