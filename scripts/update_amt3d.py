@@ -54,6 +54,9 @@ HEADERS = {
 OUT_PATH = Path(__file__).resolve().parent.parent / "assets" / "amt3d.js"
 
 
+PROBE = []  # 诊断记录（临时）
+
+
 def fetch_index_daily(secid: str):
     """拉单个指数最近 FETCH_LMT 个交易日的 (date, amountYuan)。多主机兜底。"""
     # fields2 只取 f51(日期) 和 f57(成交额/元)，klines 每行就是 "date,amount"
@@ -70,11 +73,17 @@ def fetch_index_daily(secid: str):
     last_err = None
     for host in HOSTS:
         url = f"https://{host}/api/qt/stock/kline/get"
+        rec = {"secid": secid, "host": host}
         try:
             r = requests.get(url, params=params, headers=HEADERS, timeout=15)
+            rec["http"] = r.status_code
+            rec["ctype"] = r.headers.get("content-type", "")
+            rec["len"] = len(r.content)
+            rec["body_head"] = r.text[:160]
             r.raise_for_status()
             data = (r.json() or {}).get("data") or {}
             klines = data.get("klines") or []
+            rec["klines"] = len(klines)
             out = {}
             for line in klines:
                 parts = line.split(",")
@@ -87,16 +96,30 @@ def fetch_index_daily(secid: str):
                     continue
                 if amt > 0:
                     out[date] = amt
+            rec["days"] = len(out)
+            PROBE.append(rec)
             if out:
                 print(f"[ok] {secid} via {host}: {len(out)} 天")
                 return out
             print(f"[warn] {secid} via {host}: 返回空 klines")
         except Exception as e:  # noqa: BLE001
             last_err = e
+            rec["error"] = repr(e)[:200]
+            PROBE.append(rec)
             print(f"[fail] {secid} via {host}: {e}")
         time.sleep(0.3)
     print(f"[error] {secid}: 所有主机都失败 (last={last_err})")
     return {}
+
+
+def _write_probe():
+    probe_path = Path(__file__).resolve().parent / "amt3d_probe.json"
+    probe_path.write_text(
+        json.dumps({"ranAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "probe": PROBE}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(f"[probe] 写入 {probe_path.name}")
 
 
 def main() -> int:
@@ -104,10 +127,12 @@ def main() -> int:
     sz = fetch_index_daily(INDICES["sz"])
     bj = fetch_index_daily(INDICES["bj"])
 
+    _write_probe()  # 诊断阶段：始终写探测结果
+
     # 主要市场(沪、深)必须成功，否则视为整体失败(便于验证境外可达性)
     if not sh or not sz:
-        print("[error] 上证或深证成交额缺失，判定为拉取失败。")
-        return 1
+        print("[error] 上证或深证成交额缺失，判定为拉取失败。诊断阶段以 0 退出以便提交探测文件。")
+        return 0  # 诊断阶段：先返回 0，好让 workflow 提交 probe 文件
 
     # 以沪、深都存在的日期为准；北证50 缺失则按 0 计入(占比极小)
     dates = sorted(set(sh) & set(sz))
