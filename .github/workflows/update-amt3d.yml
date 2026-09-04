@@ -39,7 +39,7 @@ jobs:
 
       - name: Commit updated data
         run: |
-          git add assets/amt3d.js scripts/amt3d_probe.json
+          git add assets/amt3d.js
           if git diff --cached --quiet; then
             echo "No amt3d change."
             exit 0

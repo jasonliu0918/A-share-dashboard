@@ -304,69 +304,88 @@ async function fetchAndRenderAmt3d() {
   const container = document.getElementById("amt-rows");
   const subEl = document.getElementById("amt-sub");
   if (!container) return;
-  const SECIDS = ["1.000001", "0.399001", "0.899050"];
-  try {
-    // 用 allSettled：只要沪/深任一成功即可合并出近3日，北证50 失败不拖垮整卡
-    const settled = await Promise.allSettled(SECIDS.map(fetchKline3d));
-    const all = settled.filter(s => s.status === "fulfilled").map(s => s.value);
-    if (all.length === 0) throw new Error("all kline failed");
-    // 按日期合并
-    const byDate = {};
-    all.forEach(arr => arr.forEach(({date, amount}) => {
-      if (!Number.isFinite(amount)) return;
-      byDate[date] = (byDate[date] || 0) + amount;
-    }));
-    const rows = Object.entries(byDate)
-      .sort((a, b) => a[0] < b[0] ? -1 : 1)
-      .slice(-3)
-      .map(([date, amt]) => ({ date, amtYi: amt / 1e8 }));
-    if (rows.length === 0) {
-      container.innerHTML = `<span style="color:var(--muted);font-size:13px;">暂无数据</span>`;
-      return;
-    }
-    recordInterfaceHealth("kline", true, rows[rows.length - 1].date);
-    const maxAmt = Math.max(...rows.map(r => r.amtYi));
-    container.innerHTML = rows.map((r, i) => {
-      const isLast = i === rows.length - 1;
-      const prev = i > 0 ? rows[i - 1].amtYi : null;
-      const diff = prev != null ? r.amtYi - prev : null;
-      const diffSign = diff == null ? "" : diff >= 0 ? "+" : "";
-      const diffColor = diff == null ? "" : diff >= 0 ? "color:var(--up)" : "color:var(--down)";
-      const barPct = maxAmt > 0 ? (r.amtYi / maxAmt * 100).toFixed(1) : 0;
-      const datePart = r.date.slice(5);
-      return `
-        <div style="display:flex;align-items:center;gap:6px;font-size:${isLast ? "14px" : "12px"};${isLast ? "font-weight:600;" : "color:var(--muted);"}">
-          <span style="min-width:36px;">${datePart}</span>
-          <div style="flex:1;background:#eef2f7;border-radius:3px;height:${isLast ? "6px" : "4px"};overflow:hidden;">
-            <div style="width:${barPct}%;height:100%;background:${isLast ? "var(--accent)" : "#94a3b8"};border-radius:3px;"></div>
-          </div>
-          <span style="min-width:56px;text-align:right;">${r.amtYi.toFixed(0)}<span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:2px;">亿</span></span>
-          ${diff != null ? `<span style="min-width:48px;font-size:11px;${diffColor}">${diffSign}${diff.toFixed(0)}</span>` : `<span style="min-width:48px;"></span>`}
-        </div>`;
-    }).join("");
-    if (subEl) subEl.textContent = `沪+深+北证50`;
-  } catch (e) {
-    // K线失败（常见于非交易时段接口异常），用三大指数的实时成交额合计兜底
-    const results = window.__lastResults;
-    if (Array.isArray(results)) {
-      const mainCodes = new Set(ALL_TARGETS.filter(t => t.group === "main").map(t => t.code));
-      let total = 0, has = false, latestDate = "";
-      results.forEach(it => {
-        if (!mainCodes.has(it.code)) return;
-        if (it.amount != null) { total += it.amount; has = true; }
-        if (it.trade_date && it.trade_date > latestDate) latestDate = it.trade_date;
-      });
-      if (has) {
-        const amtYi = total / 1e8;
-        container.innerHTML = `
-          <div style="display:flex;align-items:baseline;gap:8px;justify-content:center;">
-            <span style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;">${amtYi.toFixed(0)}</span>
-            <span style="font-size:12px;color:var(--muted);">亿</span>
-          </div>`;
-        if (subEl) subEl.textContent = `沪+深+北证50（实时合计）`;
-        return;
-      }
-    }
-    container.innerHTML = `<span style="color:var(--muted);font-size:13px;">获取失败</span>`;
+
+  // 历史(前2天)用仓库预生成的静态数据 assets/amt3d.js（每交易日收盘后由 GitHub Actions 更新，
+  // 走 github.io 分发，任何客户端网络都能读；避免依赖被部分网络屏蔽的东财 push2his 日K线）。
+  const AMT = window.AMT3D_DATA;
+  const histDays = (AMT && Array.isArray(AMT.days)) ? AMT.days : null;
+
+  // 今天日期与是否交易日：复用全站交易日历
+  const cal = getAshareCalendarStatus(new Date());
+  const todayStr = cal.ymd;
+
+  // 今天成交额：主指数当日实时成交额之和（走 push2delay/clist，基本任何网络可达）
+  let todayYuan = null, hasTodayLive = false;
+  const results = window.__lastResults;
+  if (Array.isArray(results)) {
+    const mainCodes = new Set(ALL_TARGETS.filter(t => t.group === "main").map(t => t.code));
+    let sum = 0, has = false, anyToday = false;
+    results.forEach(it => {
+      if (!mainCodes.has(it.code)) return;
+      if (it.trade_date === todayStr) anyToday = true;
+      if (it.amount != null) { sum += it.amount; has = true; }
+    });
+    if (has) todayYuan = sum;
+    hasTodayLive = anyToday && has && sum > 0;
   }
+
+  let rows = null;   // [{ date, amtYi|null, kind:'hist'|'today', pending? }]
+  let note = "";
+  if (histDays && histDays.length) {
+    if (cal.isTradingDay) {
+      // 历史 = 早于今天的最近2个交易日（收盘确认值）；今天 = 实时
+      const hist = histDays.filter(d => d.date < todayStr).slice(-2)
+        .map(d => ({ date: d.date, amtYi: d.amountYuan / 1e8, kind: "hist" }));
+      const todayRow = hasTodayLive
+        ? { date: todayStr, amtYi: todayYuan / 1e8, kind: "today" }
+        : { date: todayStr, amtYi: null, kind: "today", pending: true };
+      rows = [...hist, todayRow];
+      note = "沪+深+北证50 · 今日实时，前2日收盘值";
+    } else {
+      // 非交易日：展示静态最近3个交易日
+      rows = histDays.slice(-3).map(d => ({ date: d.date, amtYi: d.amountYuan / 1e8, kind: "hist" }));
+      note = "沪+深+北证50 · 收盘确认" + (AMT.updatedAt ? " · 更新 " + AMT.updatedAt.slice(0, 10) : "");
+    }
+  } else if (todayYuan != null && todayYuan > 0) {
+    // 静态历史缺失：至少显示今日实时
+    rows = [{ date: todayStr, amtYi: todayYuan / 1e8, kind: "today" }];
+    note = "沪+深+北证50 · 仅今日实时（历史数据暂不可用）";
+  } else {
+    container.innerHTML = `<span style="color:var(--muted);font-size:13px;">历史数据暂不可用</span>`;
+    if (subEl) subEl.textContent = "";
+    return;
+  }
+
+  const nums = rows.map(r => r.amtYi).filter(v => v != null && v > 0);
+  const maxAmt = nums.length ? Math.max(...nums) : 0;
+  container.innerHTML = rows.map((r, i) => {
+    const isLast = i === rows.length - 1;
+    const prev = i > 0 ? rows[i - 1].amtYi : null;
+    const diff = (r.amtYi != null && prev != null) ? r.amtYi - prev : null;
+    const diffSign = diff == null ? "" : diff >= 0 ? "+" : "";
+    const diffColor = diff == null ? "" : diff >= 0 ? "color:var(--up)" : "color:var(--down)";
+    const barPct = (maxAmt > 0 && r.amtYi != null) ? (r.amtYi / maxAmt * 100).toFixed(1) : 0;
+    const datePart = r.date.slice(5);
+    const valHtml = (r.amtYi == null)
+      ? `<span style="color:var(--muted);font-size:12px;">盘中待更新</span>`
+      : `${r.amtYi.toFixed(0)}<span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:2px;">亿</span>`;
+    let tail;
+    if (r.kind === "today") {
+      tail = `<span style="min-width:48px;font-size:10px;color:var(--accent);">今日</span>`;
+    } else if (diff != null) {
+      tail = `<span style="min-width:48px;font-size:11px;${diffColor}">${diffSign}${diff.toFixed(0)}</span>`;
+    } else {
+      tail = `<span style="min-width:48px;"></span>`;
+    }
+    return `
+      <div style="display:flex;align-items:center;gap:6px;font-size:${isLast ? "14px" : "12px"};${isLast ? "font-weight:600;" : "color:var(--muted);"}">
+        <span style="min-width:36px;">${datePart}</span>
+        <div style="flex:1;background:#eef2f7;border-radius:3px;height:${isLast ? "6px" : "4px"};overflow:hidden;">
+          <div style="width:${barPct}%;height:100%;background:${isLast ? "var(--accent)" : "#94a3b8"};border-radius:3px;"></div>
+        </div>
+        <span style="min-width:56px;text-align:right;">${valHtml}</span>
+        ${tail}
+      </div>`;
+  }).join("");
+  if (subEl) subEl.textContent = note;
 }
