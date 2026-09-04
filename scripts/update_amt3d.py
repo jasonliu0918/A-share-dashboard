@@ -42,8 +42,8 @@ HOSTS = [
 
 KEEP_DAYS = 30      # 前端只用 3 天，多保留便于排查/节假日/回滚
 FETCH_LMT = 60      # 多拉一些交易日做缓冲
-HOST_RETRIES = 3    # 东财对境外/数据中心 IP 偶发限流，单主机重试
-RUN_RETRIES = 3     # 整轮重试（沪或深缺失时）
+HOST_RETRIES = 2    # 东财对境外/数据中心 IP 偶发限流，单主机适度重试（过多反而更易被封）
+RUN_RETRIES = 2     # 整轮重试（沪或深缺失时）
 
 HEADERS = {
     "User-Agent": (
@@ -115,10 +115,12 @@ def main() -> int:
         print(f"[retry] 第 {run} 轮沪或深缺失，{6*run}s 后重试整轮…")
         time.sleep(6 * run)
 
-    # 主要市场(沪、深)必须成功，否则视为整体失败，非零退出、不写脏数据
+    # 主要市场(沪、深)缺失：软失败——不写、不提交，保留仓库既有 amt3d.js。
+    # 以 0 退出，避免东财对境外 IP 偶发限流时 Actions 频繁标红；数据是否更新看 amt3d.js 的 commit。
     if not sh or not sz:
-        print("[error] 上证或深证成交额缺失（多轮重试后仍失败）。保留仓库既有 amt3d.js 不动。")
-        return 1
+        print("[skip] 上证或深证成交额缺失（重试后仍失败，可能被东财限流）。"
+              "保留仓库既有 amt3d.js，本次不更新。")
+        return 0
 
     # 以沪、深都存在的日期为准；北证50 缺失则按 0 计入(占比极小)
     dates = sorted(set(sh) & set(sz))

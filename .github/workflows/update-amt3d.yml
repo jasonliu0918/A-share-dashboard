@@ -1,16 +1,13 @@
 name: Update Amt3d
 
 on:
-  # 收盘后跑：15:00 CST 收盘 → 主跑 17:30 CST，补跑 18:30 CST。cron 用 UTC。
+  # 收盘后跑：15:00 CST 收盘。多个错开的时点提高成功率（东财对境外 IP 偶发限流，
+  # 只要有一次成功即更新；失败会保留既有数据、软退出不标红）。cron 用 UTC。
   schedule:
     - cron: "30 9 * * 1-5"   # 17:30 Asia/Shanghai
-    - cron: "30 10 * * 1-5"  # 18:30 Asia/Shanghai（补跑）
+    - cron: "30 10 * * 1-5"  # 18:30 Asia/Shanghai
+    - cron: "30 12 * * 1-5"  # 20:30 Asia/Shanghai
   workflow_dispatch:
-  # 首次推送脚本/工作流时自动跑一次，用于验证境外 runner 能否访问东财
-  push:
-    paths:
-      - "scripts/update_amt3d.py"
-      - ".github/workflows/update-amt3d.yml"
 
 permissions:
   contents: write
