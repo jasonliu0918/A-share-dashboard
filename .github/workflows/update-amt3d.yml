@@ -1,0 +1,50 @@
+name: Update Amt3d
+
+on:
+  # 收盘后跑：15:00 CST 收盘 → 主跑 17:30 CST，补跑 18:30 CST。cron 用 UTC。
+  schedule:
+    - cron: "30 9 * * 1-5"   # 17:30 Asia/Shanghai
+    - cron: "30 10 * * 1-5"  # 18:30 Asia/Shanghai（补跑）
+  workflow_dispatch:
+  # 首次推送脚本/工作流时自动跑一次，用于验证境外 runner 能否访问东财
+  push:
+    paths:
+      - "scripts/update_amt3d.py"
+      - ".github/workflows/update-amt3d.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-amt3d
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install requests
+
+      - name: Generate amt3d
+        run: python scripts/update_amt3d.py
+
+      - name: Commit updated data
+        run: |
+          git add assets/amt3d.js
+          if git diff --cached --quiet; then
+            echo "No amt3d change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update amt3d (近3日成交额)"
+          git push
