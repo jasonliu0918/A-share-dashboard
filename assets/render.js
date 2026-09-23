@@ -164,9 +164,13 @@ function renderItem(it) {
 function renderMarketCap(results, breadths) {
   // 按市场聚合：上证A=000001, 深证A=399001, 北证A=899050（复用 BREADTH_FS 的 mcap 结果）
   const map = {};
+  let adjusted = false;
   results.forEach((r, i) => {
     const b = breadths[i];
-    if (b && b.mcap != null) map[r.code] = b.mcap;
+    if (b && b.mcap != null) {
+      map[r.code] = b.mcap;
+      if (b.mcapAdjusted && (r.code === "000001" || r.code === "399001" || r.code === "899050")) adjusted = true;
+    }
   });
   const TRI = 1e12; // 万亿 = 1e12 元
   const sh = map["000001"], sz = map["399001"], bj = map["899050"];
@@ -186,7 +190,7 @@ function renderMarketCap(results, breadths) {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2,"0");
     const mm = String(now.getMinutes()).padStart(2,"0");
-    tEl.textContent = `${hh}:${mm}`;
+    tEl.textContent = `${hh}:${mm}` + (adjusted ? " · 腾讯自由流通口径" : "");
   }
 }
 

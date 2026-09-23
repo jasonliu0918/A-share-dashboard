@@ -266,21 +266,104 @@ async function getLimitCounts(date) {
   }
 }
 
-const breadthCache = {}; // { code: {data, ts} }
-const BREADTH_TTL_MS = 20_000; // 20 秒内复用，避免每 tick 都全市场翻页
+// ===== 腾讯批量个股行情（东财 clist 兜底：本地统计涨跌家数 + 原始总市值，口径与 clist 一致） =====
+function loadTencentBatch(codes, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    let done = false;
+    const cleanup = () => { if (s.parentNode) s.parentNode.removeChild(s); };
+    const timer = setTimeout(() => { if (done) return; done = true; cleanup(); reject(new Error("qq timeout")); }, timeoutMs);
+    s.onload = () => { if (done) return; done = true; clearTimeout(timer); cleanup(); resolve(); };
+    s.onerror = () => { if (done) return; done = true; clearTimeout(timer); cleanup(); reject(new Error("qq script error")); };
+    s.src = "https://qt.gtimg.cn/q=" + codes.join(",") + "&_=" + Date.now();
+    document.head.appendChild(s);
+  });
+}
+
+// 从静态清单 assets/stock_codes.js 取某市场腾讯代码；科创板/创业板从沪A/深A派生
+function tencentCodesFor(code) {
+  const SC = window.STOCK_CODES;
+  if (!SC || !SC.markets) return null;
+  if (SC.markets[code] && SC.markets[code].length) return SC.markets[code];
+  if (code === "000688" && SC.markets["000001"]) return SC.markets["000001"].filter(c => c.slice(2, 4) === "68"); // 科创板 sh688/689
+  if (code === "399006" && SC.markets["399001"]) return SC.markets["399001"].filter(c => c.slice(2, 3) === "3");  // 创业板 sz300/301
+  return null;
+}
+
+async function fetchBreadthTencent(code) {
+  const list = tencentCodesFor(code);
+  if (!list || !list.length) throw new Error("no stock codes for " + code);
+  let up = 0, down = 0, flat = 0, mcapYi = 0;
+  const BATCH = 150;
+  for (let i = 0; i < list.length; i += BATCH) {
+    const chunk = list.slice(i, i + BATCH);
+    try { await loadTencentBatch(chunk); } catch (e) { /* 单批失败则跳过该批，尽量出数 */ }
+    for (const c of chunk) {
+      const v = window["v_" + c];
+      if (v && typeof v === "string") {
+        const f = v.split("~");
+        const pct = Number(f[32]);   // 涨跌幅%
+        const mc = Number(f[45]);    // 总市值(亿)，原始口径
+        if (!Number.isFinite(pct)) flat++;
+        else if (pct > 0) up++;
+        else if (pct < 0) down++;
+        else flat++;
+        if (Number.isFinite(mc) && mc > 0) mcapYi += mc;
+      }
+      try { delete window["v_" + c]; } catch {}
+    }
+  }
+  if (up + down + flat === 0) throw new Error("qq empty");
+  return { up, down, flat, mcap: mcapYi * 1e8 }; // 亿 → 元
+}
+
+// 腾讯指数总市值兜底（无需代码清单；自由流通口径，仅在东财与腾讯翻页都拿不到时用）
+const QQ_INDEX_FOR_MCAP = { "000001": "sh000001", "399001": "sz399106", "899050": "bj899050" };
+async function fetchMcapTencentIndex(code) {
+  const qc = QQ_INDEX_FOR_MCAP[code];
+  if (!qc) throw new Error("no qq index for " + code);
+  await loadTencentBatch([qc]);
+  const v = window["v_" + qc];
+  try { delete window["v_" + qc]; } catch {}
+  if (!v || typeof v !== "string") throw new Error("qq index empty");
+  const mcYi = Number(v.split("~")[45]);   // f45 总市值(亿)，自由流通口径
+  if (!Number.isFinite(mcYi) || mcYi <= 0) throw new Error("no mcap");
+  return { up: null, down: null, flat: null, mcap: mcYi * 1e8, mcapAdjusted: true };
+}
+
+const breadthCache = {}; // { code: {data, ts, source} }
+const BREADTH_TTL_MS = 20_000;     // 东财 clist 20 秒复用
+const BREADTH_TTL_QQ_MS = 60_000;  // 腾讯翻页较重，兜底时 60 秒复用
 async function getBreadth(code) {
   const fs = BREADTH_FS[code];
   if (!fs) return null;
   const now = Date.now();
   const c = breadthCache[code];
-  if (c && (now - c.ts < BREADTH_TTL_MS)) return c.data;
+  const ttl = (c && c.source === "qq") ? BREADTH_TTL_QQ_MS : BREADTH_TTL_MS;
+  if (c && (now - c.ts < ttl)) return c.data;
   try {
     const data = await fetchBreadthForFs(fs);
-    breadthCache[code] = { data, ts: now };
+    breadthCache[code] = { data, ts: now, source: "em" };
     return data;
   } catch (e) {
     recordInterfaceHealth("breadth", false, e.message || e);
-    return c ? c.data : null;
+    // 东财 clist 失败 → 腾讯批量翻页兜底（涨跌家数 + 原始总市值）
+    try {
+      const data = await fetchBreadthTencent(code);
+      breadthCache[code] = { data, ts: now, source: "qq" };
+      recordInterfaceHealth("breadth", true, "腾讯兜底");
+      return data;
+    } catch (e2) {
+      // 腾讯翻页也失败（多半是没有代码清单）→ 至少用腾讯指数拿总市值(自由流通口径)
+      try {
+        const data = await fetchMcapTencentIndex(code);
+        breadthCache[code] = { data, ts: now, source: "qq" };
+        recordInterfaceHealth("breadth", true, "腾讯指数总市值兜底");
+        return data;
+      } catch (e3) {
+        return c ? c.data : null;
+      }
+    }
   }
 }
 
