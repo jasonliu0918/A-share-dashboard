@@ -116,10 +116,10 @@ def main() -> int:
             print(f"[fail] {mkt}: {e}")
             markets[mkt] = []
 
-    # 沪、深必须成功(北交所可选)
+    # 沪、深必须成功(北交所可选)。诊断阶段：失败则非零退出，让 Generate 步真实反映 clist 可达性。
     if not markets.get("000001") or not markets.get("399001"):
-        print("[skip] 沪或深代码清单缺失(可能被限流)。保留仓库既有 stock_codes.js,本次不更新。")
-        return 0
+        print("[error] 沪或深代码清单缺失——clist 从 GitHub 也拉不到。")
+        return 1
 
     payload = {
         "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
