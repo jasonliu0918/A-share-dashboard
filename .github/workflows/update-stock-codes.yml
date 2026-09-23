@@ -6,11 +6,6 @@ on:
     - cron: "0 10 * * 0"     # 周日 18:00 CST
     - cron: "40 9 * * 1-5"   # 交易日 17:40 CST
   workflow_dispatch:
-  # 临时:推送时自动跑一次生成初始清单(验证后移除)
-  push:
-    paths:
-      - "scripts/update_stock_codes.py"
-      - ".github/workflows/update-stock-codes.yml"
 
 permissions:
   contents: write
