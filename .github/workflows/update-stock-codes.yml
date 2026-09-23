@@ -1,0 +1,46 @@
+name: Update Stock Codes
+
+on:
+  # 代码清单变化慢,每周日 + 每交易日收盘后各跑一次(捕捉新股/退市)。cron 用 UTC。
+  schedule:
+    - cron: "0 10 * * 0"     # 周日 18:00 CST
+    - cron: "40 9 * * 1-5"   # 交易日 17:40 CST
+  workflow_dispatch:
+  # 临时:首次推送时自动跑一次生成初始清单(验证后会移除)
+  push:
+    paths:
+      - "scripts/update_stock_codes.py"
+      - ".github/workflows/update-stock-codes.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-stock-codes
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install requests
+      - name: Generate stock codes
+        run: python scripts/update_stock_codes.py
+      - name: Commit updated data
+        run: |
+          git add assets/stock_codes.js
+          if git diff --cached --quiet; then
+            echo "No stock-codes change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update stock_codes (全市场代码清单)"
+          git push
