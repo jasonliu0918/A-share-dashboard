@@ -43,4 +43,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: update stock_codes (全市场代码清单)"
-          git push
+          for i in 1 2 3; do
+            if git pull --rebase origin main && git push origin main; then exit 0; fi
+            echo "push retry $i"; sleep 5
+          done
+          exit 1
