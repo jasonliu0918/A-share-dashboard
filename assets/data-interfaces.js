@@ -188,12 +188,16 @@ async function fetchBreadthForFs(fs) {
     const qs =
       `pn=${pn}&pz=${PAGE}&po=1&np=1&fltt=2&invt=2&fid=f3&fs=${encodeURIComponent(fs)}` +
       `&fields=f2,f3,f20&ut=bd1d9ddb04089700cf9c27f6f7426281`;
+    // 单页在所有主机上失败时整轮重试（深证等分页多的市场，避免单页偶发掉线导致整块丢失）
     let j = null, lastErr = null;
-    for (const host of EM_HOSTS) {
-      try {
-        j = await jsonp(`https://${host}/api/qt/clist/get?${qs}`, 7000);
-        break;
-      } catch (e) { lastErr = e; }
+    for (let attempt = 0; attempt < 3 && !j; attempt++) {
+      for (const host of EM_HOSTS) {
+        try {
+          j = await jsonp(`https://${host}/api/qt/clist/get?${qs}`, 7000);
+          break;
+        } catch (e) { lastErr = e; }
+      }
+      if (!j) await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
     }
     if (!j || !j.data) throw lastErr || new Error("clist empty");
     const rows = Array.isArray(j.data.diff) ? j.data.diff : [];
