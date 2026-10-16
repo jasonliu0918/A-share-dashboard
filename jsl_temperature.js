@@ -1,1 +1,1 @@
-window.JSL_TEMPERATURE = {"temperature":29.29,"priceDate":"2026-10-15","medianPb":2.46,"medianPe":22.5,"medianPeTemperature":9.81,"fetchedAt":"2026-10-16 01:29:34"};
+window.JSL_TEMPERATURE = {"temperature":29.84,"priceDate":"2026-10-16","medianPb":2.47,"medianPe":22.88,"medianPeTemperature":10.92,"fetchedAt":"2026-10-16 13:30:02"};
